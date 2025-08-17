@@ -5,7 +5,7 @@ from dotenv import dotenv_values
 from typing import Dict, List, Any, Set
 import datetime
 from datetime import date # type: ignore
-
+import tzdata # type: ignore 
 from db import BirthdayDB
 from zoneinfo import ZoneInfo, available_timezones
 config : Dict[str, str | None] = dotenv_values(".env")
@@ -26,6 +26,16 @@ async def IANA_autocomplete(interaction: discord.Interaction,
     return [app_commands.Choice(name=tz, value=tz) for tz in TIMEZONES if current.lower() in tz.lower()][:10]
 
 
+class myTime(datetime.time):
+    def __eq__(self, value: object) -> bool:
+        if value.__getattribute__("tzinfo"):
+            return super().__eq__(value) and (self.tzinfo == value.__getattribute__("tzinfo"))
+        return super().__eq__(value)
+    def __hash__(self) -> int:
+        if "key" in dir(self.tzinfo):
+            return f"{self.isoformat()} {self.tzinfo.__getattribute__("key")}".__hash__()
+        return super().__hash__()
+    
 class MyClient(commands.Bot):
     async def on_ready(self):
         # this should 1. poll the current time and try running a cron job
@@ -60,9 +70,11 @@ class MyClient(commands.Bot):
                 continue
             timzeones.add(v["tz"])
         for time in timzeones:
-            times.append(datetime.time(hour = 0, minute = 0, tzinfo = ZoneInfo(time)))
-        if not times:
-            return [datetime.time(hour = 0, minute = 0, tzinfo = ZoneInfo("America/Los_Angeles"))]
+            print(f"time: {time}")
+            times.append(myTime(hour = 0, minute = 0, tzinfo = ZoneInfo(time)))
+        print(times)
+        if len(times) == 0:
+            return [myTime(hour = 0, minute = 0, tzinfo = ZoneInfo("America/Los_Angeles"))]
         return times
 
     async def get_channelnames(self,interaction: discord.Interaction, 
@@ -119,6 +131,7 @@ class MyClient(commands.Bot):
 client = MyClient(command_prefix="!", intents=intents)
 
 
+
 # ok so
 # client commands can be global or per-server
 # when testing, set this to per-server
@@ -138,17 +151,14 @@ async def setbirthday(interaction: discord.Interaction, year: int, month: int, d
             await interaction.response.send_message("Please select an IANA timezone from the drop-down menu")
             return
         channelid = await client.db.getChannelID()
-        print("here?")
+
         if not channelid:
             await interaction.response.send_message("Please set a channel to wish people in first!")
             return
-        print("here 2")
         await client.db.writeBirthday(interaction.user.id, f"{mybirthday}", tz)
-        print("here 3")
         # now update birthdays
         client.data_snapshot = await client.get_alldata() # get all current birthdays from the database
         client.midnights = client.get_midnights()
-        print("here 4")
         if not client.birthdaycheck.is_running():
             client.birthdaycheck.start()
         
