@@ -55,7 +55,9 @@ class MyClient(commands.Bot):
     def get_midnights(self) -> List[datetime.time]:
         times : List[datetime.time] = []
         timzeones : Set[str] = set()
-        for _, v in self.data_snapshot.items():
+        for k, v in self.data_snapshot.items():
+            if k == "channelid": 
+                continue
             timzeones.add(v["tz"])
         for time in timzeones:
             times.append(datetime.time(hour = 0, minute = 0, tzinfo = ZoneInfo(time)))
@@ -136,14 +138,17 @@ async def setbirthday(interaction: discord.Interaction, year: int, month: int, d
             await interaction.response.send_message("Please select an IANA timezone from the drop-down menu")
             return
         channelid = await client.db.getChannelID()
+        print("here?")
         if not channelid:
             await interaction.response.send_message("Please set a channel to wish people in first!")
             return
+        print("here 2")
         await client.db.writeBirthday(interaction.user.id, f"{mybirthday}", tz)
+        print("here 3")
         # now update birthdays
         client.data_snapshot = await client.get_alldata() # get all current birthdays from the database
         client.midnights = client.get_midnights()
-
+        print("here 4")
         if not client.birthdaycheck.is_running():
             client.birthdaycheck.start()
         
