@@ -213,6 +213,8 @@ async def setchannel(interaction: discord.Interaction, channel:str):
             await interaction.response.send_message(f"I can't find channel: {channel}, sorry!")
     except Exception as e:
         await interaction.response.send_message(f"Unknown Error: {e}")
+
+
 # @client.tree.command(name="debugp", description = "Prints debug info", guild=GUILD_ID)
 # async def debug(interaction: discord.Interaction):
 

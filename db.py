@@ -43,7 +43,7 @@ class BirthdayDB():
         return await self.mydb.aget(userid)
     
     async def getChannelID(self) -> Optional[int]:
-        return await int(self.mydb.aget("channelid"))
+        return  int(await self.mydb.aget("channelid"))
 
     async def apurge(self):
         await self.mydb.apurge()
