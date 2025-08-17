@@ -135,7 +135,8 @@ async def setbirthday(interaction: discord.Interaction, year: int, month: int, d
         if tz not in TIMEZONES: 
             await interaction.response.send_message("Please select an IANA timezone from the drop-down menu")
             return
-        if not (await client.db.getChannelID()):
+        channelid = await client.db.getChannelID()
+        if not channelid:
             await interaction.response.send_message("Please set a channel to wish people in first!")
             return
         await client.db.writeBirthday(interaction.user.id, f"{mybirthday}", tz)
