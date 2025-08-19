@@ -46,7 +46,7 @@ class MyClient(commands.Bot):
                 print(f"Synced {len(synced)} commands to {GUILD_ID.id}")
             
             self.data_snapshot : Dict[str, Dict[str, str]] = await self.get_alldata() # get all current birthdays from the database
-            self.midnights: List[datetime.time] = self.get_midnights()
+            self.midnights: List[myTime] = self.get_midnights()
             self.birthdaycheck.start()
             if self.birthdaycheck.is_running():
                 self.birthdaycheck.change_interval(time = self.midnights)
@@ -60,10 +60,10 @@ class MyClient(commands.Bot):
         
         print(f"Logged on as {self.user}")
     # on message really need not do anything
-    
+
     # get midnight at every time zone stored in the database
-    def get_midnights(self) -> List[datetime.time]:
-        times : List[datetime.time] = []
+    def get_midnights(self) -> List[myTime]:
+        times : List[myTime] = []
         timzeones : Set[str] = set()
         for k, v in self.data_snapshot.items():
             if k == "channelid": 
@@ -104,7 +104,7 @@ class MyClient(commands.Bot):
         #     print(f"Message was probably empty")
         #     return
         # await message.channel.send(f"Message from {message.author} : {message.content}!")
-    @tasks.loop(time=[datetime.time(hour = 0, minute = 0, tzinfo = ZoneInfo("Asia/Calcutta"))])
+    @tasks.loop(time=[myTime(hour = 0, minute = 0, tzinfo = ZoneInfo("Asia/Calcutta"))])
     async def birthdaycheck(self):
         await self.wait_until_ready()
         remind_channel_id = await self.db.getChannelID()
