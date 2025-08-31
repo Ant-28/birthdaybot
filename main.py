@@ -48,7 +48,7 @@ class MyClient(commands.Bot):
             
             self.data_snapshot : Dict[str, Dict[str, str]] = await self.get_alldata() # get all current birthdays from the database
             # self.midnights: List[myTime] = self.get_midnights()
-            # self.birthdaycheck.start()
+            self.birthdaycheck.start()
             # if self.birthdaycheck.is_running():
             #     self.birthdaycheck.change_interval(time = self.midnights)
             #     # print("birthdaycheck is running")
