@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands  # type: ignore
 from dotenv import dotenv_values
-from typing import Dict, List, Any, Set
+from typing import Dict, List, Any
 import datetime
 from datetime import date # type: ignore
 import tzdata # type: ignore 
@@ -25,7 +25,8 @@ async def IANA_autocomplete(interaction: discord.Interaction,
                             current: str) -> List[app_commands.Choice[str]]:
     return [app_commands.Choice(name=tz, value=tz) for tz in TIMEZONES if current.lower() in tz.lower()][:10]
 
-
+# this sucks
+# it's a hack to make multiple timezones hashable but doesn't work
 class myTime(datetime.time):
     def __eq__(self, value: object) -> bool:
         if value.__getattribute__("tzinfo"):
@@ -46,36 +47,70 @@ class MyClient(commands.Bot):
                 print(f"Synced {len(synced)} commands to {GUILD_ID.id}")
             
             self.data_snapshot : Dict[str, Dict[str, str]] = await self.get_alldata() # get all current birthdays from the database
-            self.midnights: List[myTime] = self.get_midnights()
-            self.birthdaycheck.start()
-            if self.birthdaycheck.is_running():
-                self.birthdaycheck.change_interval(time = self.midnights)
-                # print("birthdaycheck is running")
-                # self.birthdaycheck.change_interval(time = [datetime.time(hour = 1, minute = 37, tzinfo = ZoneInfo("Asia/Calcutta"))])
-                self.birthdaycheck.restart()
-            else:
-                print('what')
+            # self.midnights: List[myTime] = self.get_midnights()
+            # self.birthdaycheck.start()
+            # if self.birthdaycheck.is_running():
+            #     self.birthdaycheck.change_interval(time = self.midnights)
+            #     # print("birthdaycheck is running")
+            #     # self.birthdaycheck.change_interval(time = [datetime.time(hour = 1, minute = 37, tzinfo = ZoneInfo("Asia/Calcutta"))])
+            #     self.birthdaycheck.restart()
+            # else:
+            #     print('what')
         except Exception as e:
             print(f"Error synching commands {e}")
         
         print(f"Logged on as {self.user}")
     # on message really need not do anything
 
+    def _get_utc_day(self) -> datetime.datetime:
+        return datetime.datetime.now().astimezone(ZoneInfo("UTC"))
+
+    def _get_day_in_tz(self, tz: ZoneInfo) -> datetime.datetime:
+        now           = datetime.datetime.now(tz)
+        next_midnight = now.combine(now.date(), datetime.time(0,0,0), tz)
+
+        # if today is 2/2/25 afternoon 
+        # you've already passed 2/2/25 midnight, so add a day
+        if next_midnight < now: 
+            next_midnight += datetime.timedelta(days=1)  
+        return next_midnight
+
+    def get_closest_midnight(self) -> datetime.datetime:
+        utc_ref = self._get_utc_day()
+        tztimes = [(i, self._get_day_in_tz(ZoneInfo(tz))) for (i,tz) in enumerate(self.get_timezones())]
+        deltas_from_utc = list(map(lambda t : (t[0], t[1] - utc_ref), tztimes))
+        deltas_from_utc = list(filter(lambda t: (t[0], t[1] >= datetime.timedelta(0)), deltas_from_utc))
+        minval = min(deltas_from_utc, key=lambda t: t[1]) # use timedelta
+        res = list(filter(lambda t : t[0] == minval[0], tztimes))[0][1] # get the first datetime in the first tuple 
+        return res
+        
+
     # get midnight at every time zone stored in the database
-    def get_midnights(self) -> List[myTime]:
-        times : List[myTime] = []
-        timzeones : Set[str] = set()
+    # def get_midnights(self) -> List[myTime]:
+    #     times : List[myTime] = []
+    #     timzeones : Set[str] = set()
+    #     for k, v in self.data_snapshot.items():
+    #         if k == "channelid": 
+    #             continue
+    #         timzeones.add(v["tz"])
+    #     for time in timzeones:
+    #         print(f"time: {time}")
+    #         times.append(myTime(hour = 0, minute = 0, tzinfo = ZoneInfo(time)))
+    #     print(times)
+    #     if len(times) == 0:
+    #         return [myTime(hour = 0, minute = 0, tzinfo = ZoneInfo("America/Los_Angeles"))]
+    #     return times
+
+    def get_timezones(self) -> List[str]:
+        tz : set[str] = set()
         for k, v in self.data_snapshot.items():
             if k == "channelid": 
                 continue
-            timzeones.add(v["tz"])
-        for time in timzeones:
-            print(f"time: {time}")
-            times.append(myTime(hour = 0, minute = 0, tzinfo = ZoneInfo(time)))
-        print(times)
-        if len(times) == 0:
-            return [myTime(hour = 0, minute = 0, tzinfo = ZoneInfo("America/Los_Angeles"))]
-        return times
+            tz.add(v["tz"])
+        if len(tz) == 0:
+            tz = {"UTC"}
+        return list(tz)
+
 
     async def get_channelnames(self,interaction: discord.Interaction, 
                             current: str) -> List[app_commands.Choice[str]]:
@@ -104,9 +139,15 @@ class MyClient(commands.Bot):
         #     print(f"Message was probably empty")
         #     return
         # await message.channel.send(f"Message from {message.author} : {message.content}!")
-    @tasks.loop(time=[myTime(hour = 0, minute = 0, tzinfo = ZoneInfo("Asia/Calcutta"))])
+    # Loop objects don't distinguish timezones well. Given whatever today is
+    @tasks.loop(seconds=0)
     async def birthdaycheck(self):
         await self.wait_until_ready()
+        self.closest_tz = None
+        if self.get_closest_midnight().tzinfo: 
+            self.closest_tz = self.get_closest_midnight().tzinfo.__str__()
+        print(f"closest midnight: {self.get_closest_midnight()} {self.get_closest_midnight().tzinfo} {self.closest_tz}")
+        await discord.utils.sleep_until(self.get_closest_midnight()) # sleep until the closest mmidnight
         remind_channel_id = await self.db.getChannelID()
         if not remind_channel_id:
             raise Exception("Client has not set a channel id to wish birthdays in")
@@ -121,7 +162,9 @@ class MyClient(commands.Bot):
                 birthday = datetime.datetime.fromisoformat(birthdayinfo).date()
                 print(birthday)
                 print(datetime.datetime.now().astimezone(ZoneInfo(tz)).date())
-                if datetime.datetime.now().astimezone(ZoneInfo(tz)).date() == birthday:
+                today_is_user_birthday = datetime.datetime.now().astimezone(ZoneInfo(tz)).date() == birthday
+                birthday_in_curr_tz = tz == self.closest_tz 
+                if today_is_user_birthday and birthday_in_curr_tz:
                     await remind_channel.send(f"Happy Birthday, <@{userid}>!") # type: ignore
             except Exception as e:
                 print(f"Some error occured when sending a birthday, {e}")
@@ -158,11 +201,8 @@ async def setbirthday(interaction: discord.Interaction, year: int, month: int, d
         await client.db.writeBirthday(interaction.user.id, f"{mybirthday}", tz)
         # now update birthdays
         client.data_snapshot = await client.get_alldata() # get all current birthdays from the database
-        client.midnights = client.get_midnights()
         if not client.birthdaycheck.is_running():
             client.birthdaycheck.start()
-        
-        client.birthdaycheck.change_interval(time = client.midnights)
         client.birthdaycheck.restart()
         print(f"restarted birthdaycheck {client.birthdaycheck.is_running()} {client.birthdaycheck.time}")
         await interaction.response.send_message(f"Your birthday is... {mybirthday} {tz}.\nThis has been set in the database.")
@@ -191,15 +231,14 @@ async def settimezone(interaction: discord.Interaction, tz: str):
             return
         await client.db.writeTimezone(interaction.user.id, tz)
 
-         # now update birthdays
+        # now update birthdays
+        # FIXME eventually this will not scale
         client.data_snapshot = await client.get_alldata() # get all current birthdays from the database
-        client.midnights = client.get_midnights()
+ 
 
         if not client.birthdaycheck.is_running():
             client.birthdaycheck.start()
-        
-        client.birthdaycheck.change_interval(time = client.midnights)
-        client.birthdaycheck.restart()
+        client.birthdaycheck.restart() # restart to get the closest midnight
         print(f"restarted birthdaycheck {client.birthdaycheck.is_running()} {client.birthdaycheck.time}")
         await interaction.response.send_message(f"Your timezone is... {tz}.\nThis has been set in the database.")
     except Exception as e:
