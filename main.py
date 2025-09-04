@@ -153,7 +153,9 @@ class MyClient(commands.Bot):
             raise Exception("Client has not set a channel id to wish birthdays in")
         remind_channel = self.get_channel(remind_channel_id)
         if remind_channel is not None: 
-            await remind_channel.send("It sure is a midnight") # type: ignore
+            # await remind_channel.send("It sure is a midnight") # type: ignore
+            pass # uncomment this --^ when you need to debug
+            
         for userid, data in self.data_snapshot.items():
             try:
                 birthdayinfo = data["date"]
